@@ -76,10 +76,10 @@
 
 #define FTS_WORKQUEUE_NAME                  "fts_wq"
 
-#define FTS_MAX_POINTS                      10
+#define FTS_MAX_POINTS                      5
 #define FTS_KEY_WIDTH                       50
-#define FTS_ONE_TCH_LEN                     6
-#define POINT_READ_BUF  (3 + FTS_ONE_TCH_LEN * FTS_MAX_POINTS)
+#define FTS_ONE_TCH_LEN                     7
+#define POINT_READ_BUF  (18 + FTS_ONE_TCH_LEN * FTS_MAX_POINTS)
 
 #define FTS_MAX_ID                          0x0F
 #define FTS_TOUCH_X_H_POS                   3
@@ -94,8 +94,8 @@
 #define FTS_COORDS_ARR_SIZE                 4
 
 #define FTS_TOUCH_DOWN      0
-#define FTS_TOUCH_UP        1
-#define FTS_TOUCH_CONTACT   2
+#define FTS_TOUCH_CONTACT   1
+#define FTS_TOUCH_UP        2
 
 #define FTS_SYSFS_ECHO_ON(buf)      ((strncasecmp(buf, "1", 1)  == 0) || \
 					(strncasecmp(buf, "on", 2) == 0))

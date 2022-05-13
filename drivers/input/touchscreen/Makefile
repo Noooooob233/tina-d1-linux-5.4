@@ -113,4 +113,5 @@ obj-$(CONFIG_TOUCHSCREEN_RASPBERRYPI_FW)	+= raspberrypi-ts.o
 obj-$(CONFIG_TOUCHSCREEN_IQS5XX)	+= iqs5xx.o
 obj-$(CONFIG_TOUCHSCREEN_GSLX680NEW)    += gslx680new/
 obj-$(CONFIG_TOUCHSCREEN_FTS)    += focaltech_touch/
+obj-$(CONFIG_TOUCHSCREEN_CST128A_CUST)    += cst128a_cust/
 obj-$(CONFIG_INPUT_TOUCHSCREEN)    += gt9xxnew/

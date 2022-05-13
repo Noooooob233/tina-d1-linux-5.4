@@ -415,8 +415,8 @@ static int fts_input_dev_report_key_event(struct ts_event *event, struct fts_ts_
 					if (event->au16_x[0] > (data->pdata->key_x_coords[i] - FTS_KEY_WIDTH) &&
 					    event->au16_x[0] < (data->pdata->key_x_coords[i] + FTS_KEY_WIDTH)) {
 
-						if (event->au8_touch_event[i] == 0 ||
-						    event->au8_touch_event[i] == 2) {
+						if (event->au8_touch_event[i] == FTS_TOUCH_DOWN ||
+						    event->au8_touch_event[i] == FTS_TOUCH_CONTACT) {
 							input_report_key(data->input_dev, data->pdata->keys[i], 1);
 							FTS_DEBUG("Key%d(%d, %d) DOWN!", i, event->au16_x[0], event->au16_y[0]);
 						} else {
@@ -567,6 +567,7 @@ static int fts_read_touchdata(struct fts_ts_data *data)
 {
 	u8 buf[POINT_READ_BUF] = { 0 };
 	u8 pointid = FTS_MAX_ID;
+	u16 point_x = 0, point_y = 0;
 	int ret = -1;
 	int i;
 	struct ts_event *event = &(data->event);
@@ -613,6 +614,27 @@ static int fts_read_touchdata(struct fts_ts_data *data)
 		fts_i2c_read(data->client, buf + 9, 1, buf + 9, (event->point_num - 1) * FTS_ONE_TCH_LEN);
 	}
 #else
+
+	// buf[0] = 0x02;
+	// ret = fts_i2c_read(data->client, buf, 1, buf, 1);
+	// if (ret < 0) {
+	// 	FTS_ERROR("[B]Read touchdata failed, ret: %d", ret);
+	// 	return ret;
+	// }
+	// printk("PointsNum: %d", buf[0]);
+
+	// u8 addr_s[5] = { 0x03, 0x09, 0x0F, 0x15, 0x1B };
+	// for(i = 0; i < 5; i++){
+	// 	buf[0] = addr_s[i];
+	// 	ret = fts_i2c_read(data->client, buf, 1, buf, 6);
+	// 	if (ret < 0) {
+	// 		FTS_ERROR("[B]Read touchdata failed, ret: %d", ret);
+	// 		return ret;
+	// 	}
+	// 	printk("Point%d: %d, %d, %d, %d, %d, %d", i + 1, buf[0], buf[1], buf[2], buf[3], buf[4], buf[5]);
+	// }
+
+	buf[0] = 0x00;
 	ret = fts_i2c_read(data->client, buf, 1, buf, POINT_READ_BUF);
 	if (ret < 0) {
 		FTS_ERROR("[B]Read touchdata failed, ret: %d", ret);
@@ -624,53 +646,106 @@ static int fts_read_touchdata(struct fts_ts_data *data)
 #endif
 
 	memset(event, 0, sizeof(struct ts_event));
-	event->point_num = buf[FTS_TOUCH_POINT_NUM] & 0x0F;
+	event->point_num = buf[17] & 0x0F;
 	if (event->point_num > data->pdata->max_touch_number) {
 		event->point_num = data->pdata->max_touch_number;
 	}
 	event->touch_point = 0;
 #endif
 
-#if (FTS_DEBUG_EN && (FTS_DEBUG_LEVEL == 2))
-	fts_show_touch_buffer(buf, event->point_num);
-#endif
-
-	for (i = 0; i < data->pdata->max_touch_number; i++) {
-		pointid = (buf[FTS_TOUCH_ID_POS + FTS_ONE_TCH_LEN * i]) >> 4;
-		if (pointid >= FTS_MAX_ID) {
-			break;
-		} else {
-			event->touch_point++;
+#if FTS_DEBUG_EN 
+	printk("-----buf----\n");
+	printk("PointsNum: %d\n", buf[17]);
+	for(i = 18; i < POINT_READ_BUF; i++){
+		if((i - 18) % 7 == 0){
+			printk("%d,", buf[i]);
 		}
-
-		event->au16_x[i] =
-			(s16)(buf[FTS_TOUCH_X_H_POS + FTS_ONE_TCH_LEN * i] & 0x0F) <<
-			8 | (s16) buf[FTS_TOUCH_X_L_POS + FTS_ONE_TCH_LEN * i];
-		event->au16_y[i] =
-			(s16)(buf[FTS_TOUCH_Y_H_POS + FTS_ONE_TCH_LEN * i] & 0x0F) <<
-			8 | (s16) buf[FTS_TOUCH_Y_L_POS + FTS_ONE_TCH_LEN * i];
-		event->au8_touch_event[i] =
-			buf[FTS_TOUCH_EVENT_POS + FTS_ONE_TCH_LEN * i] >> 6;
-		event->au8_finger_id[i] =
-			(buf[FTS_TOUCH_ID_POS + FTS_ONE_TCH_LEN * i]) >> 4;
-		event->area[i] =
-			(buf[FTS_TOUCH_AREA_POS + FTS_ONE_TCH_LEN * i]) >> 4;
-		event->pressure[i] =
-			(s16) buf[FTS_TOUCH_PRE_POS + FTS_ONE_TCH_LEN * i];
-
-		if (event->area[i] == 0) {
-			event->area[i] = 0x09;
-		}
-
-		if (event->pressure[i] == 0) {
-			event->pressure[i] = 0x3f;
-		}
-
-		if ((event->au8_touch_event[i] == 0 || event->au8_touch_event[i] == 2) && (event->point_num == 0)) {
-			FTS_DEBUG("abnormal touch data from fw");
-			return -1;
+		else{
+			printk(KERN_CONT "%d,", buf[i]);
 		}
 	}
+#endif
+
+	event->touch_point = buf[17];
+
+	for(i = 0; i < event->touch_point; i++){
+		event->au8_finger_id[i] = (buf[18 + 7 * i]);
+		point_x = (s16)(buf[20 + 7 * i] & 0x0F) << 8 | (s16) buf[19 + 7 * i];
+		point_x = point_x << 1;
+
+		point_y = (s16)(buf[22 + 7 * i] & 0x0F) << 8 | (s16) buf[21 + 7 * i];
+		point_y = (point_y << 1) + (point_y >> 1);
+
+		if (1) {
+			event->au16_x[i] = point_x;
+			event->au16_y[i] = point_y;
+		}
+		else {
+			event->au16_y[i] = point_x;
+			event->au16_x[i] = point_y;
+		}
+
+		if(1){
+			event->au16_x[i] = data->pdata->x_max - data->pdata->x_min - event->au16_x[i];
+		}
+
+		if(0){
+			event->au16_y[i] = data->pdata->y_max - data->pdata->y_min - event->au16_y[i];
+		}
+
+		event->au8_touch_event[i] = buf[24 + 7 * i] >> 1;
+
+		event->area[i] = 0x09;
+		event->pressure[i] = 0x3f;
+#if FTS_DEBUG_EN 
+		printk("i:%d, x:%d, y:%d, ev:%d, fi:%d, area:%d, pre:%d\n", 
+		 		i, event->au16_x[i], event->au16_y[i], event->au8_touch_event[i], event->au8_finger_id[i], event->area[i], event->pressure[i]);
+#endif
+	}
+
+// #if (FTS_DEBUG_EN && (FTS_DEBUG_LEVEL == 2))
+// 	fts_show_touch_buffer(buf, event->point_num);
+// #endif
+
+// 	for (i = 0; i < data->pdata->max_touch_number; i++) {
+// 		pointid = (buf[FTS_TOUCH_ID_POS + FTS_ONE_TCH_LEN * i]) >> 4;
+// 		if (pointid >= FTS_MAX_ID) {
+// 			break;
+// 		} else {
+// 			event->touch_point++;
+// 		}
+
+// 		event->au16_x[i] =
+// 			(s16)(buf[FTS_TOUCH_X_H_POS + FTS_ONE_TCH_LEN * i] & 0x0F) <<
+// 			8 | (s16) buf[FTS_TOUCH_X_L_POS + FTS_ONE_TCH_LEN * i];
+// 		event->au16_y[i] =
+// 			(s16)(buf[FTS_TOUCH_Y_H_POS + FTS_ONE_TCH_LEN * i] & 0x0F) <<
+// 			8 | (s16) buf[FTS_TOUCH_Y_L_POS + FTS_ONE_TCH_LEN * i];
+// 		event->au8_touch_event[i] =
+// 			buf[FTS_TOUCH_EVENT_POS + FTS_ONE_TCH_LEN * i] >> 6;
+// 		event->au8_finger_id[i] =
+// 			(buf[FTS_TOUCH_ID_POS + FTS_ONE_TCH_LEN * i]) >> 4;
+// 		event->area[i] =
+// 			(buf[FTS_TOUCH_AREA_POS + FTS_ONE_TCH_LEN * i]) >> 4;
+// 		event->pressure[i] =
+// 			(s16) buf[FTS_TOUCH_PRE_POS + FTS_ONE_TCH_LEN * i];
+
+// 		if (event->area[i] == 0) {
+// 			event->area[i] = 0x09;
+// 		}
+
+// 		if (event->pressure[i] == 0) {
+// 			event->pressure[i] = 0x3f;
+// 		}
+
+// 		// printk("i:%d, x:%d, y:%d, ev:%d, fi:%d, area:%d, pre:%d\n", 
+// 		// i, event->au16_x[i], event->au16_y[i], event->au8_touch_event[i], event->au8_finger_id[i], event->area[i], event->pressure[i]);
+
+// 		// if ((event->au8_touch_event[i] == 0 || event->au8_touch_event[i] == 2) && (event->point_num == 0)) {
+// 		// 	FTS_DEBUG("abnormal touch data from fw");
+// 		// 	return -1;
+// 		// }
+// 	}
 	if (event->touch_point == 0) {
 		return -1;
 	}
@@ -687,7 +762,6 @@ static int fts_read_touchdata(struct fts_ts_data *data)
 static void fts_report_value(struct fts_ts_data *data)
 {
 	struct ts_event *event = &data->event;
-
 
 	FTS_DEBUG("point number: %d, touch point: %d", event->point_num,
 		  event->touch_point);
@@ -823,7 +897,6 @@ static int fts_get_dt_coords(struct device *dev, char *name,
 	if (!prop->value) {
 		return -ENODATA;
 	}
-
 
 	coords_size = prop->length / sizeof(u32);
 	if (coords_size != FTS_COORDS_ARR_SIZE) {
